@@ -1,0 +1,391 @@
+-- Fluent UI Library Loader
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+-- Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ล้าง BlurEffect ที่ค้างอยู่จาก Fluent
+for _, effect in ipairs(Lighting:GetChildren()) do
+    if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+        effect:Destroy()
+    end
+end
+
+-- ตัวแปรการตั้งค่า
+local Config = {
+    AutoDeposit = false,
+    AutoCollectCash = false,
+    AutoMerge = false,
+    AutoBuyTier = false,
+    AutoUpgradeProcess = false,
+    AutoGroupReward = false,
+    AutoBuyChickens = false,
+    BuyChickenAmount = "Buy100",
+    Language = "TH"
+}
+
+---------------------------------------------------------------------
+-- ฟังก์ชันช่วยเหลือ (HELPER FUNCTIONS)
+---------------------------------------------------------------------
+local function GetPlayerPlot()
+    local plotsFolder = Workspace:FindFirstChild("Plots")
+    if not plotsFolder then return nil end
+
+    for _, plot in ipairs(plotsFolder:GetChildren()) do
+        local plotUI = plot:FindFirstChild("PlotUI")
+        if plotUI then
+            local ui = plotUI:FindFirstChild("UI")
+            local playerNameLabel = ui and ui:FindFirstChild("PlayerName")
+            if playerNameLabel and string.find(string.lower(playerNameLabel.Text), string.lower(LocalPlayer.Name)) then
+                return plot
+            end
+        end
+    end
+
+    return plotsFolder:FindFirstChild(LocalPlayer.Name)
+end
+
+local function TriggerTouch(targetPart)
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if rootPart and targetPart and targetPart:IsA("BasePart") then
+        if firetouchinterest then
+            firetouchinterest(rootPart, targetPart, 0)
+            task.wait(0.05)
+            firetouchinterest(rootPart, targetPart, 1)
+        end
+    end
+end
+
+---------------------------------------------------------------------
+-- การตั้งค่าหน้าต่าง FLUENT UI
+---------------------------------------------------------------------
+local Window = Fluent:CreateWindow({
+    Title = "Chicken Farm ",
+    SubTitle = "By XZ HUB",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = false,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.RightControl
+})
+
+local Tabs = {
+    Automation = Window:AddTab({ Title = "ระบบอัตโนมัติ", Icon = "play" }),
+    Upgrades = Window:AddTab({ Title = "อัปเกรด & ร้านค้า", Icon = "shopping-cart" }),
+    Language = Window:AddTab({ Title = "ภาษา & ทั่วไป", Icon = "globe" }),
+    Settings = Window:AddTab({ Title = "ตั้งค่า UI", Icon = "settings" })
+}
+
+---------------------------------------------------------------------
+-- ปุ่มลอยไอคอน X สีแดง (MOBILE FLOATING TOGGLE BUTTON)
+---------------------------------------------------------------------
+local MobileGui = Instance.new("ScreenGui")
+MobileGui.Name = "FluentMobileToggle"
+MobileGui.ResetOnSpawn = false
+MobileGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local ToggleBtn = Instance.new("ImageButton")
+ToggleBtn.Name = "LogoButton"
+ToggleBtn.Size = UDim2.new(0, 52, 0, 52)
+ToggleBtn.Position = UDim2.new(0.02, 0, 0.45, 0)
+ToggleBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+ToggleBtn.AutoButtonColor = false
+ToggleBtn.Parent = MobileGui
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 14)
+BtnCorner.Parent = ToggleBtn
+
+local BtnStroke = Instance.new("UIStroke")
+BtnStroke.Color = Color3.fromRGB(255, 45, 55)
+BtnStroke.Thickness = 2
+BtnStroke.Transparency = 0.25
+BtnStroke.Parent = ToggleBtn
+
+local xAssetId = "rbxassetid://10747384394"
+if Fluent.Icons and Fluent.Icons["x"] then
+    xAssetId = Fluent.Icons["x"]
+end
+
+local LogoImage = Instance.new("ImageLabel")
+LogoImage.Name = "LogoIcon"
+LogoImage.Size = UDim2.new(0.65, 0, 0.65, 0)
+LogoImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+LogoImage.AnchorPoint = Vector2.new(0.5, 0.5)
+LogoImage.BackgroundTransparency = 1
+LogoImage.Image = xAssetId
+LogoImage.ImageColor3 = Color3.fromRGB(255, 45, 55)
+LogoImage.ScaleType = Enum.ScaleType.Fit
+LogoImage.Parent = ToggleBtn
+
+---------------------------------------------------------------------
+-- ระบบอนิเมชั่น & การควบคุมการเปิด-ปิด (SAFE TOGGLE LOGIC)
+---------------------------------------------------------------------
+local defaultSize = UDim2.new(0, 52, 0, 52)
+local pressedSize = UDim2.new(0, 43, 0, 43)
+local tweenBounce = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local tweenPress = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local tweenRotate = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+local isUiOpen = true
+
+-- ปรับไอคอน/เอฟเฟกต์ให้ตรงกับสถานะ isUiOpen ปัจจุบันเสมอ (ไม่แตะ Visible ของปุ่มลอย)
+local function SyncToggleIcon()
+    local targetRotation = isUiOpen and 0 or 90
+    TweenService:Create(LogoImage, tweenRotate, {Rotation = targetRotation}):Play()
+
+    for _, effect in ipairs(Lighting:GetChildren()) do
+        if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+            effect.Enabled = isUiOpen
+        end
+    end
+end
+
+-- ฟังก์ชันสลับการเปิด/ปิดหน้าต่าง Fluent UI (เรียกเมื่อกดปุ่มลอยเอง)
+local function ToggleMainUI()
+    isUiOpen = not isUiOpen
+
+    if Fluent.GUI then
+        Fluent.GUI.Enabled = isUiOpen
+    end
+
+    SyncToggleIcon()
+end
+
+-- ผูกปุ่มลอยเข้ากับสถานะจริงของ Fluent.GUI เสมอ
+-- ครอบคลุมทุกทางที่ UI อาจถูกปิด/เปิด เช่น กด MinimizeKey (RightControl)
+-- ไม่ใช่แค่ตอนกดปุ่มลอยเอง ทำให้ปุ่มลอยไม่ค้างสถานะผิดอีกต่อไป
+if Fluent.GUI then
+    Fluent.GUI:GetPropertyChangedSignal("Enabled"):Connect(function()
+        isUiOpen = Fluent.GUI.Enabled
+        SyncToggleIcon()
+    end)
+end
+
+-- ระบบลากปุ่มรอบหน้าจอ
+local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+
+ToggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = ToggleBtn.Position
+
+        TweenService:Create(ToggleBtn, tweenPress, {Size = pressedSize}):Play()
+        TweenService:Create(BtnStroke, tweenPress, {Transparency = 0, Thickness = 2.6}):Play()
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                TweenService:Create(ToggleBtn, tweenBounce, {Size = defaultSize}):Play()
+                TweenService:Create(BtnStroke, tweenBounce, {Transparency = 0.25, Thickness = 2}):Play()
+            end
+        end)
+    end
+end)
+
+ToggleBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        ToggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- กดปุ่มเพื่อเปิด-ปิด UI
+ToggleBtn.MouseButton1Click:Connect(function()
+    ToggleMainUI()
+end)
+
+---------------------------------------------------------------------
+-- แท็บ 1: ระบบอัตโนมัติ (AUTOMATION)
+---------------------------------------------------------------------
+Tabs.Automation:AddSection("ระบบฟาร์มหลัก")
+
+local ToggleDeposit = Tabs.Automation:AddToggle("Toggle_AutoDeposit", { Title = "ส่งไข่อัตโนมัติ (Auto Deposit)", Default = false })
+ToggleDeposit:OnChanged(function(Value)
+    Config.AutoDeposit = Value
+end)
+
+local ToggleCollectCash = Tabs.Automation:AddToggle("Toggle_AutoCollectCash", { Title = "เก็บเงินอัตโนมัติ (Auto Collect Money)", Default = false })
+ToggleCollectCash:OnChanged(function(Value)
+    Config.AutoCollectCash = Value
+end)
+
+local ToggleMerge = Tabs.Automation:AddToggle("Toggle_AutoMerge", { Title = "รวมไก่อัตโนมัติ (Auto Merge)", Default = false })
+ToggleMerge:OnChanged(function(Value)
+    Config.AutoMerge = Value
+end)
+
+local ToggleGroupReward = Tabs.Automation:AddToggle("Toggle_AutoGroupReward", { Title = "รับรางวัลกลุ่มอัตโนมัติ (Group Reward)", Default = false })
+ToggleGroupReward:OnChanged(function(Value)
+    Config.AutoGroupReward = Value
+end)
+
+---------------------------------------------------------------------
+-- แท็บ 2: อัปเกรดและร้านค้า (UPGRADES & SHOP)
+---------------------------------------------------------------------
+Tabs.Upgrades:AddSection("ซื้อไก่")
+
+local ToggleBuyChickens = Tabs.Upgrades:AddToggle("Toggle_AutoBuyChickens", { Title = "ซื้อไก่อัตโนมัติ (Auto Buy Chickens)", Default = false })
+ToggleBuyChickens:OnChanged(function(Value)
+    Config.AutoBuyChickens = Value
+end)
+
+local DropdownBuyAmount = Tabs.Upgrades:AddDropdown("Dropdown_BuyAmount", {
+    Title = "จำนวนที่ซื้อต่อครั้ง",
+    Values = {"Buy1", "Buy5", "Buy25", "Buy100"},
+    Multi = false,
+    Default = "Buy100"
+})
+DropdownBuyAmount:OnChanged(function(Value)
+    Config.BuyChickenAmount = Value
+end)
+
+Tabs.Upgrades:AddSection("อัปเกรดแปลงฟาร์ม")
+
+local ToggleBuyTier = Tabs.Upgrades:AddToggle("Toggle_AutoBuyTier", { Title = "อัปเกรดระดับการซื้อ (Upgrade Buy Tier)", Default = false })
+ToggleBuyTier:OnChanged(function(Value)
+    Config.AutoBuyTier = Value
+end)
+
+local ToggleUpgradeProcess = Tabs.Upgrades:AddToggle("Toggle_AutoUpgradeProcess", { Title = "อัปเกรดสายพานแปรรูป (Upgrade Processing)", Default = false })
+ToggleUpgradeProcess:OnChanged(function(Value)
+    Config.AutoUpgradeProcess = Value
+end)
+
+---------------------------------------------------------------------
+-- แท็บ 3: ภาษาและทั่วไป (LANGUAGE & GENERAL)
+---------------------------------------------------------------------
+Tabs.Language:AddSection("การตั้งค่าภาษา (Language Settings)")
+
+local DropdownLang = Tabs.Language:AddDropdown("Dropdown_Language", {
+    Title = "เลือกภาษา (Select Language)",
+    Values = {"ภาษาไทย (TH)", "English (EN)"},
+    Multi = false,
+    Default = "ภาษาไทย (TH)"
+})
+DropdownLang:OnChanged(function(Value)
+    if Value == "ภาษาไทย (TH)" then
+        Config.Language = "TH"
+        Fluent:Notify({ Title = "ภาษา", Content = "เปลี่ยนเป็นภาษาไทยเรียบร้อยแล้ว", Duration = 3 })
+    else
+        Config.Language = "EN"
+        Fluent:Notify({ Title = "Language", Content = "Switched to English", Duration = 3 })
+    end
+end)
+
+Tabs.Language:AddSection("การควบคุมบนมือถือ")
+Tabs.Language:AddParagraph({
+    Title = "ปุ่ม X สีแดง (Mobile Toggle)",
+    Content = "แตะที่ไอคอน X สีแดงเพื่อเปิด-ปิดเมนู หรือกดค้างเพื่อลากย้ายตำแหน่งปุ่มได้ตามต้องการ"
+})
+
+-- ปุ่มลบสคริปต์และปุ่มลอยทั้งหมดออกจากเกม
+Tabs.Language:AddButton({
+    Title = "ปิดการทำงานทั้งหมด (Unload Script)",
+    Description = "ปิดหน้าต่างและลบปุ่มลอยออกจากหน้าจอทั้งหมด",
+    Callback = function()
+        MobileGui:Destroy()
+        if Fluent.GUI then
+            Fluent.GUI:Destroy()
+        end
+    end
+})
+
+---------------------------------------------------------------------
+-- แท็บ 4: ตั้งค่าตัวจัดการ UI (SETTINGS)
+---------------------------------------------------------------------
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("FluentChickenFarmTH")
+SaveManager:SetFolder("FluentChickenFarmTH/config")
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+---------------------------------------------------------------------
+-- ลูปทำงานอัตโนมัติ (AUTOMATION LOOP)
+---------------------------------------------------------------------
+task.spawn(function()
+    while true do
+        local plot = GetPlayerPlot()
+        if plot and plot:FindFirstChild("Buttons") then
+            local buttons = plot.Buttons
+
+            -- ส่งไข่
+            if Config.AutoDeposit then
+                local deposit = buttons:FindFirstChild("DepositEggs")
+                local hitbox = deposit and deposit:FindFirstChild("Hitbox")
+                if hitbox then TriggerTouch(hitbox) end
+            end
+
+            -- เก็บเงิน
+            if Config.AutoCollectCash then
+                local collect = buttons:FindFirstChild("CollectMoney")
+                local btn = collect and collect:FindFirstChild("Button")
+                if btn then TriggerTouch(btn) end
+            end
+
+            -- รวมไก่
+            if Config.AutoMerge then
+                local merge = buttons:FindFirstChild("MergeChickens")
+                local btn = merge and merge:FindFirstChild("Button")
+                if btn then TriggerTouch(btn) end
+            end
+
+            -- ซื้อไก่
+            if Config.AutoBuyChickens and buttons:FindFirstChild("BuyChickens") then
+                local buyModel = buttons.BuyChickens:FindFirstChild(Config.BuyChickenAmount)
+                local btn = buyModel and buyModel:FindFirstChild("Button")
+                if btn then TriggerTouch(btn) end
+            end
+
+            -- อัปเกรดระดับการซื้อ
+            if Config.AutoBuyTier then
+                local tierUpgrade = buttons:FindFirstChild("UpgradeBuyTier")
+                local btn = tierUpgrade and tierUpgrade:FindFirstChild("Button")
+                if btn then TriggerTouch(btn) end
+            end
+
+            -- อัปเกรดการแปรรูป
+            if Config.AutoUpgradeProcess then
+                local procUpgrade = buttons:FindFirstChild("UpgradeProcess")
+                local btn = procUpgrade and procUpgrade:FindFirstChild("Button")
+                if btn then TriggerTouch(btn) end
+            end
+
+            -- รับรางวัลกลุ่ม
+            if Config.AutoGroupReward then
+                local grpReward = buttons:FindFirstChild("CollectGroupReward")
+                local btn = grpReward and grpReward:FindFirstChild("Button")
+                if btn then TriggerTouch(btn) end
+            end
+        end
+        task.wait(0.3)
+    end
+end)
+
+Fluent:Notify({
+    Title = "Chicken Farm Automator",
+    Content = "แก้ไขปุ่มลอยให้เปิด-ปิดได้ตลอดเวลาเรียบร้อยแล้ว",
+    Duration = 4
+})
