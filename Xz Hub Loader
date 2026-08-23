@@ -1,5 +1,5 @@
 -- ============================================================
--- XZ-HUB MASTER LOADER (UNIVERSAL THUMBNAIL FIXED EDITION)
+-- XZ-HUB MASTER LOADER (CRASH-PROOF & MINIFY-SAFE EDITION)
 -- ============================================================
 
 local TweenService = game:GetService("TweenService")
@@ -777,6 +777,11 @@ local SideDiscordCorner = Instance.new("UICorner")
 SideDiscordCorner.CornerRadius = UDim.new(0, 6)
 SideDiscordCorner.Parent = SideDiscordBtn
 
+local SideDiscordStroke = Instance.new("UIStroke")
+SideDiscordStroke.Color = Color3.fromRGB(45, 30, 35)
+SideDiscordStroke.Thickness = 1
+SideDiscordStroke.Parent = SideDiscordBtn
+
 -- ---------------- [[ RIGHT CONTENT & TABS ]] ----------------
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
@@ -1528,7 +1533,7 @@ CancelBtn.MouseButton1Click:Connect(function()
     pendingUpdatingGame = nil
 end)
 
--- ---------------- [[ BUILD SELECTOR CARDS (UNIVERSAL RESOLVER) ]] ----------------
+-- ---------------- [[ BUILD SELECTOR CARDS ]] ----------------
 local cardElements = {}
 
 for _, gameData in ipairs(SupportedGames) do
@@ -1571,33 +1576,12 @@ for _, gameData in ipairs(SupportedGames) do
     Thumb.Size = UDim2.new(1, 0, 1, 0)
     Thumb.Position = UDim2.new(0, 0, 0, 0)
     Thumb.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+    Thumb.Image = "rbxthumb://type=Asset&id=" .. tostring(gameData.Id) .. "&w=420&h=230"
     Thumb.BorderSizePixel = 0
     Thumb.ScaleType = Enum.ScaleType.Crop
     Thumb.ImageTransparency = isUsable and 0 or 0.4
     Thumb.ZIndex = 4
     Thumb.Parent = ThumbWrap
-
-    -- ระบบ Resolve Image แบบ Async (แก้ภาพไม่โหลดทุกกรณี)
-    task.spawn(function()
-        if game.PlaceId == gameData.Id then
-            -- ถ้ากำลังเล่นเกมนี้อยู่ ดึง UniverseId ในเกมได้ทันที 100%
-            Thumb.Image = "rbxthumb://type=GameIcon&id=" .. tostring(game.GameId) .. "&w=150&h=150"
-        else
-            -- พยายามแปลง PlaceId -> UniverseId แบบเงียบๆ ไม่บล็อก UI
-            local success, json = pcall(function()
-                return game:HttpGet("https://apis.roblox.com/universes/v1/places/" .. tostring(gameData.Id) .. "/universe")
-            end)
-            if success and json then
-                local decodeOk, res = pcall(function() return HttpService:JSONDecode(json) end)
-                if decodeOk and res and res.universeId then
-                    Thumb.Image = "rbxthumb://type=GameIcon&id=" .. tostring(res.universeId) .. "&w=150&h=150"
-                    return
-                end
-            end
-            -- Fallback ดั้งเดิม
-            Thumb.Image = "rbxthumb://type=Asset&id=" .. tostring(gameData.Id) .. "&w=420&h=230"
-        end
-    end)
 
     local FlashOverlay = Instance.new("Frame")
     FlashOverlay.Size = UDim2.new(1, 0, 1, 0)
