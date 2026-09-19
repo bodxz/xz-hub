@@ -1,5 +1,5 @@
 -- ============================================================
--- XZ-HUB LOADER (FIXED COLOR SEQUENCE & COMPLETE UI)
+-- XZ-HUB MASTER LOADER (FIXED COLOR SEQUENCE & COMPLETE UI)
 -- ============================================================
 
 local TweenService = game:GetService("TweenService")
@@ -14,7 +14,7 @@ local CoreGui = game:GetService("CoreGui")
 local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 
---
+-- ปิดเฉพาะเอฟเฟกต์บรรยากาศทั่วไป (ไม่ลบและไม่ปิดเอฟเฟกต์ระบบเล็งปืนของเกม)
 for _, effect in ipairs(Lighting:GetChildren()) do
     if (effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect")) and not effect.Name:lower():find("aim") then
         effect.Enabled = false
@@ -32,7 +32,7 @@ local CONFIG = {
     
     SoundEnabled = true,
     ParticlesEnabled = true,
-    AutoInjectEnabled = false,
+    AutoInjectEnabled = true, -- ปรับเป็น true เริ่มต้น
     ToggleKey = Enum.KeyCode.RightControl,
     
     Sounds = {
@@ -1420,7 +1420,7 @@ UpdatingModal.Size = UDim2.new(1, 0, 1, 0)
 UpdatingModal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 UpdatingModal.BackgroundTransparency = 0.4
 UpdatingModal.Visible = false
-UpdatingModal.ZIndex = 35
+UpdatingModal.ZIndex = 70
 UpdatingModal.Parent = MainFrame
 
 local UpdatingCard = Instance.new("Frame")
@@ -1429,7 +1429,7 @@ UpdatingCard.Position = UDim2.new(0.5, 0, 0.5, 0)
 UpdatingCard.AnchorPoint = Vector2.new(0.5, 0.5)
 UpdatingCard.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 UpdatingCard.BorderSizePixel = 0
-UpdatingCard.ZIndex = 36
+UpdatingCard.ZIndex = 71
 UpdatingCard.Parent = UpdatingModal
 round(UpdatingCard, 8)
 
@@ -1446,7 +1446,7 @@ UpdatingTitle.TextColor3 = Color3.fromRGB(240, 195, 60)
 UpdatingTitle.Position = UDim2.new(0, 16, 0, 16)
 UpdatingTitle.Size = UDim2.new(1, -32, 0, 18)
 UpdatingTitle.BackgroundTransparency = 1
-UpdatingTitle.ZIndex = 37
+UpdatingTitle.ZIndex = 72
 UpdatingTitle.Parent = UpdatingCard
 
 local UpdatingDesc = Instance.new("TextLabel")
@@ -1458,7 +1458,7 @@ UpdatingDesc.Position = UDim2.new(0, 16, 0, 42)
 UpdatingDesc.Size = UDim2.new(1, -32, 0, 52)
 UpdatingDesc.TextWrapped = true
 UpdatingDesc.BackgroundTransparency = 1
-UpdatingDesc.ZIndex = 37
+UpdatingDesc.ZIndex = 72
 UpdatingDesc.Parent = UpdatingCard
 
 local ProceedBtn = Instance.new("TextButton")
@@ -1470,7 +1470,7 @@ ProceedBtn.Font = Enum.Font.GothamBold
 ProceedBtn.TextSize = 11.5
 ProceedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ProceedBtn.AutoButtonColor = false
-ProceedBtn.ZIndex = 37
+ProceedBtn.ZIndex = 72
 ProceedBtn.Parent = UpdatingCard
 round(ProceedBtn, 6)
 
@@ -1483,7 +1483,7 @@ CancelBtn.Font = Enum.Font.GothamBold
 CancelBtn.TextSize = 11.5
 CancelBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
 CancelBtn.AutoButtonColor = false
-CancelBtn.ZIndex = 37
+CancelBtn.ZIndex = 72
 CancelBtn.Parent = UpdatingCard
 round(CancelBtn, 6)
 
@@ -1495,6 +1495,7 @@ local function startLoaderSequence(gameData)
     playSound(CONFIG.Sounds.Click)
     sendDiscordLog(gameData.Name)
     
+    DiscordGatewayView.Visible = false
     UpdatingModal.Visible = false
     Sidebar.Visible = false
     Topbar.Visible = false
@@ -1943,19 +1944,26 @@ local introTween = TweenService:Create(UIScale, TweenInfo.new(0.45, Enum.EasingS
 })
 introTween:Play()
 
--- Auto-Inject Check
+-- ---------------- [[ AUTO-INJECT PIPELINE ]] ----------------
 task.delay(1.5, function()
     if isDestroyed or not CONFIG.AutoInjectEnabled then return end
+    
+    local matchedGame = nil
     for _, g in ipairs(SupportedGames) do
         if isGameMatched(g) then
-            local status = getGameStatus(g)
-            if status == "Working" then
-                startLoaderSequence(g)
-            elseif status == "Updating" then
-                pendingUpdatingGame = g
-                UpdatingModal.Visible = true
-            end
+            matchedGame = g
             break
+        end
+    end
+    
+    if matchedGame then
+        local status = getGameStatus(matchedGame)
+        if status == "Working" then
+            startLoaderSequence(matchedGame)
+        elseif status == "Updating" then
+            pendingUpdatingGame = matchedGame
+            dismissGateway()
+            UpdatingModal.Visible = true
         end
     end
 end)
